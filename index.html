@@ -119,10 +119,34 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 .spinner{width:22px;height:22px;border:2px solid var(--sand-200);border-top-color:var(--tc);border-radius:50%;animation:spin 0.8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
+/* ── Mini calendar picker ── */
+#picker-wrap{position:relative;}
+#date-display{cursor:pointer;padding:3px 6px;border-radius:6px;transition:background 0.15s;user-select:none;}
+#date-display:hover{background:var(--sand-200);}
+#mini-cal{display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 6px);background:var(--cream);border:0.5px solid var(--sand-200);border-radius:12px;padding:10px;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,0.12);width:200px;}
+#mini-cal.open{display:block;}
+#mc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+#mc-header button{background:none;border:none;cursor:pointer;color:var(--sand-600);font-size:14px;padding:2px 5px;border-radius:4px;}
+#mc-header button:hover{background:var(--sand-200);}
+#mc-month-label{font-size:12px;font-weight:600;color:var(--sand-800);cursor:pointer;}
+#mc-month-label:hover{color:var(--tc);}
+#mc-days-head{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px;}
+#mc-days-head span{text-align:center;font-size:9px;font-weight:600;color:var(--sand-400);padding:2px 0;}
+#mc-days{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;}
+.mc-day{text-align:center;font-size:11px;padding:4px 2px;border-radius:5px;cursor:pointer;color:var(--sand-800);}
+.mc-day:hover{background:var(--sand-200);}
+.mc-day.other-month{color:var(--sand-400);}
+.mc-day.today{font-weight:700;color:var(--tc);}
+.mc-day.selected{background:var(--tc);color:white;}
+.mc-day.selected:hover{background:var(--tc-dark);}
+#mc-today-btn{width:100%;margin-top:8px;padding:4px;font-size:10px;border-radius:6px;border:0.5px solid var(--sand-400);background:none;cursor:pointer;color:var(--sand-600);}
+#mc-today-btn:hover{background:var(--sand-200);}
+
 /* Mobile: collapse sidebar into top strip */
 @media(max-width:600px){
   #sidebar{width:160px;min-width:160px;}
   :root{--col-7:60px;--col-3:95px;--col-day:100px;}
+  #mini-cal{left:0;transform:none;}
 }
 </style>
 </head>
@@ -139,7 +163,21 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
     </div>
     <div id="date-nav">
       <button id="prev-period">‹</button>
-      <div id="date-display"></div>
+      <div id="picker-wrap">
+        <div id="date-display"></div>
+        <div id="mini-cal">
+          <div id="mc-header">
+            <button id="mc-prev">‹</button>
+            <span id="mc-month-label"></span>
+            <button id="mc-next">›</button>
+          </div>
+          <div id="mc-days-head">
+            <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+          </div>
+          <div id="mc-days"></div>
+          <button id="mc-today-btn">回到今天</button>
+        </div>
+      </div>
       <button id="next-period">›</button>
     </div>
     <div class="section-title">任務清單</div>
@@ -232,7 +270,7 @@ const CATEGORIES = [
   {id:'admin',name:'行政',color:'#5C7A8A'},
 ];
 const DAY_NAMES = ['日','一','二','三','四','五','六'];
-const DAY_START = 7, DAY_END = 22;
+const DAY_START = 6, DAY_END = 24;
 const ROW_H = 32; // px per 30-min slot
 
 // ── State ────────────────────────────────────────────────
@@ -322,6 +360,7 @@ function renderDateNav(){
           <div style="font-size:10px;color:#7D7568">${n===3?'3日檢視':'本週'}</div>`;
   }
   document.getElementById('date-display').innerHTML=html;
+  renderMiniCal();
 }
 function renderCatList(){
   const el=document.getElementById('cat-list');
@@ -360,6 +399,78 @@ function renderTaskList(){
   });
 }
 function renderSidebar(){renderDateNav();renderCatList();renderTaskList();}
+
+// ── Mini calendar picker ───────────────────────────────────
+let mcYear=new Date().getFullYear(), mcMonth=new Date().getMonth();
+
+function renderMiniCal(){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const selDate=new Date(state.currentDate); selDate.setHours(0,0,0,0);
+  const label=`${mcYear}年 ${mcMonth+1}月`;
+  document.getElementById('mc-month-label').textContent=label;
+  const grid=document.getElementById('mc-days');
+  grid.innerHTML='';
+  // first day of month
+  const first=new Date(mcYear,mcMonth,1);
+  const startDay=first.getDay(); // 0=Sun
+  // days in month
+  const daysInMonth=new Date(mcYear,mcMonth+1,0).getDate();
+  // prev month fill
+  const prevDays=new Date(mcYear,mcMonth,0).getDate();
+  for(let i=startDay-1;i>=0;i--){
+    const d=prevDays-i;
+    const cell=document.createElement('div');
+    cell.className='mc-day other-month';
+    cell.textContent=d;
+    const dt=new Date(mcYear,mcMonth-1,d);
+    cell.addEventListener('click',()=>pickDate(dt));
+    grid.appendChild(cell);
+  }
+  for(let d=1;d<=daysInMonth;d++){
+    const cell=document.createElement('div');
+    const dt=new Date(mcYear,mcMonth,d);
+    let cls='mc-day';
+    if(dt.getTime()===today.getTime()) cls+=' today';
+    if(dt.getTime()===selDate.getTime()) cls+=' selected';
+    cell.className=cls;
+    cell.textContent=d;
+    cell.addEventListener('click',()=>pickDate(dt));
+    grid.appendChild(cell);
+  }
+  // next month fill
+  const totalCells=startDay+daysInMonth;
+  const remaining=(7-totalCells%7)%7;
+  for(let d=1;d<=remaining;d++){
+    const cell=document.createElement('div');
+    cell.className='mc-day other-month';
+    cell.textContent=d;
+    const dt=new Date(mcYear,mcMonth+1,d);
+    cell.addEventListener('click',()=>pickDate(dt));
+    grid.appendChild(cell);
+  }
+}
+
+function pickDate(dt){
+  state.currentDate=new Date(dt);
+  mcYear=dt.getFullYear(); mcMonth=dt.getMonth();
+  document.getElementById('mini-cal').classList.remove('open');
+  renderSidebar(); renderCal();
+}
+
+function openMiniCal(){
+  mcYear=state.currentDate.getFullYear();
+  mcMonth=state.currentDate.getMonth();
+  renderMiniCal();
+  document.getElementById('mini-cal').classList.toggle('open');
+}
+
+document.getElementById('date-display').addEventListener('click',e=>{e.stopPropagation();openMiniCal();});
+document.getElementById('mc-prev').addEventListener('click',e=>{e.stopPropagation();mcMonth--;if(mcMonth<0){mcMonth=11;mcYear--;}renderMiniCal();});
+document.getElementById('mc-next').addEventListener('click',e=>{e.stopPropagation();mcMonth++;if(mcMonth>11){mcMonth=0;mcYear++;}renderMiniCal();});
+document.getElementById('mc-month-label').addEventListener('click',e=>{e.stopPropagation();mcYear=new Date().getFullYear();mcMonth=new Date().getMonth();renderMiniCal();});
+document.getElementById('mc-today-btn').addEventListener('click',e=>{e.stopPropagation();pickDate(new Date());});
+// close when clicking outside
+document.addEventListener('click',()=>document.getElementById('mini-cal').classList.remove('open'));
 
 // ── Calendar render (unified for all views) ───────────────
 function renderCal(){
